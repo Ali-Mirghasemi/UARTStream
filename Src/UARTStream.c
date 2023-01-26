@@ -18,11 +18,11 @@ void UARTStream_init(
     stream->HUART = huart;
 
     IStream_init(&stream->Input, UARTStream_receive, rxBuff, rxBuffSize);
-    IStream_setCheckReceive(&stream->Input, UARTStream_checkReceivedBytes);
+    IStream_setCheckReceive(&stream->Input, UARTStream_checkReceive);
     IStream_setArgs(&stream->Input, stream);
 
     OStream_init(&stream->Output, UARTStream_transmit, txBuff, txBuffSize);
-    OStream_setCheckTransmit(&stream->Output, UARTStream_checkTransmitedBytes);
+    OStream_setCheckTransmit(&stream->Output, UARTStream_checkTransmit);
     OStream_setArgs(&stream->Output, stream);
 }
 /**
@@ -49,7 +49,7 @@ void UARTStream_txHandle(UARTStream* stream) {
  * @param stream 
  * @return Stream_LenType 
  */
-Stream_LenType UARTStream_checkReceivedBytes(IStream* stream) {
+Stream_LenType UARTStream_checkReceive(IStream* stream) {
     UARTStream* uartStream = (UARTStream*) IStream_getArgs(stream);
     if (uartStream->HUART->hdmarx) {
         return IStream_incomingBytes(stream) - __HAL_DMA_GET_COUNTER(uartStream->HUART->hdmarx);
@@ -64,7 +64,7 @@ Stream_LenType UARTStream_checkReceivedBytes(IStream* stream) {
  * @param stream 
  * @return Stream_LenType 
  */
-Stream_LenType UARTStream_checkTransmitedBytes(OStream* stream) {
+Stream_LenType UARTStream_checkTransmit(OStream* stream) {
     UARTStream* uartStream = (UARTStream*) OStream_getArgs(stream);
     if (uartStream->HUART->hdmarx) {
         return OStream_outgoingBytes(stream) - __HAL_DMA_GET_COUNTER(uartStream->HUART->hdmatx);
