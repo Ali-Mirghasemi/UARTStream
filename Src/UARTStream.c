@@ -80,14 +80,16 @@ Stream_LenType UARTStream_checkTransmit(OStream* stream) {
  * @param buff 
  * @param len 
  */
-void UARTStream_receive(IStream* stream, uint8_t* buff, Stream_LenType len) {
+Stream_Result UARTStream_receive(IStream* stream, uint8_t* buff, Stream_LenType len) {
+    HAL_StatusTypeDef status;
     UARTStream* uartStream = (UARTStream*) IStream_getArgs(stream);
     if (uartStream->HUART->hdmarx) {
-        HAL_UART_Receive_DMA(uartStream->HUART, buff, len);
+        status = HAL_UART_Receive_DMA(uartStream->HUART, buff, len);
     }
     else {
-        HAL_UART_Receive_IT(uartStream->HUART, buff, len);
+        status = HAL_UART_Receive_IT(uartStream->HUART, buff, len);
     }
+    return status == HAL_OK ? Stream_Ok : Stream_CustomError | status;
 }
 /**
  * @brief Stream transmit function
@@ -96,12 +98,14 @@ void UARTStream_receive(IStream* stream, uint8_t* buff, Stream_LenType len) {
  * @param buff 
  * @param len 
  */
-void UARTStream_transmit(OStream* stream, uint8_t* buff, Stream_LenType len) {
+Stream_Result UARTStream_transmit(OStream* stream, uint8_t* buff, Stream_LenType len) {
+    HAL_StatusTypeDef status;
     UARTStream* uartStream = (UARTStream*) OStream_getArgs(stream);
     if (uartStream->HUART->hdmatx) {
-        HAL_UART_Transmit_DMA(uartStream->HUART, buff, len);
+        status = HAL_UART_Transmit_DMA(uartStream->HUART, buff, len);
     }
     else {
-        HAL_UART_Transmit_IT(uartStream->HUART, buff, len);
+        status = HAL_UART_Transmit_IT(uartStream->HUART, buff, len);
     }
+    return status == HAL_OK ? Stream_Ok : Stream_CustomError | status;
 }

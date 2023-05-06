@@ -68,8 +68,8 @@ void UARTStream_txHandle(UARTStream* stream);
 
 Stream_LenType UARTStream_checkReceive(IStream* stream);
 Stream_LenType UARTStream_checkTransmit(OStream* stream);
-void UARTStream_receive(IStream* stream, uint8_t* buff, Stream_LenType len);
-void UARTStream_transmit(OStream* stream, uint8_t* buff, Stream_LenType len);
+Stream_Result UARTStream_receive(IStream* stream, uint8_t* buff, Stream_LenType len);
+Stream_Result UARTStream_transmit(OStream* stream, uint8_t* buff, Stream_LenType len);
 
 #endif // _UART_STREAM_H_
 
