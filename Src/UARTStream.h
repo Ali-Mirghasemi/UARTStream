@@ -18,38 +18,13 @@
 /******************************************************************************/
 /*                                Configuration                               */
 /******************************************************************************/
-#define UARTSTREAM_MCU_F0		0x00
-#define UARTSTREAM_MCU_F1		0x01
-#define UARTSTREAM_MCU_F2		0x02
-#define UARTSTREAM_MCU_F3		0x03
-#define UARTSTREAM_MCU_F4		0x04
-#define UARTSTREAM_MCU_F7		0x07
-#define UARTSTREAM_MCU_H7		0x17
-
 /**
- * @brief define your MCU series
- */
-#define UARTSTREAM_MCU			UARTSTREAM_MCU_F4
+ * @brief Enable/Disable UARTStream support for idle
+*/
+#define UARTSTREAM_SUPPORT_IDLE		1
 
 /******************************************************************************/
-
-#if   UARTSTREAM_MCU == UARTSTREAM_MCU_F0
-	#include "stm32f0xx.h"
-#elif UARTSTREAM_MCU == UARTSTREAM_MCU_F1
-	#include "stm32f1xx.h"
-#elif UARTSTREAM_MCU == UARTSTREAM_MCU_F2
-	#include "stm32f2xx.h"
-#elif UARTSTREAM_MCU == UARTSTREAM_MCU_F3
-	#include "stm32f3xx.h"
-#elif UARTSTREAM_MCU == UARTSTREAM_MCU_F4
-	#include "stm32f4xx.h"
-#elif UARTSTREAM_MCU == UARTSTREAM_MCU_F7
-	#include "stm32f7xx.h"
-#elif UARTSTREAM_MCU == UARTSTREAM_MCU_H7
-	#include "stm32h7xx.h"
-#else
-	#error "Wrong MCU series!"
-#endif
+#include "main.h"
 
 typedef struct {
 	UART_HandleTypeDef* 		HUART;
@@ -65,11 +40,22 @@ void UARTStream_init(
 
 void UARTStream_rxHandle(UARTStream* stream);
 void UARTStream_txHandle(UARTStream* stream);
+void UARTStream_errorHandle(UARTStream* stream);
 
 Stream_LenType UARTStream_checkReceive(IStream* stream);
 Stream_LenType UARTStream_checkTransmit(OStream* stream);
 Stream_Result UARTStream_receive(IStream* stream, uint8_t* buff, Stream_LenType len);
 Stream_Result UARTStream_transmit(OStream* stream, uint8_t* buff, Stream_LenType len);
+
+#if UARTSTREAM_SUPPORT_IDLE
+	void UARTStream_initIdle(
+		UARTStream* stream, UART_HandleTypeDef* huart, 
+		uint8_t* rxBuff, Stream_LenType rxBuffSize, 
+		uint8_t* txBuff, Stream_LenType txBuffSize
+	);
+	void UARTStream_rxHandleIdle(UARTStream* stream, Stream_LenType len);
+	Stream_Result UARTStream_receiveIdle(IStream* stream, uint8_t* buff, Stream_LenType len);
+#endif
 
 #endif // _UART_STREAM_H_
 

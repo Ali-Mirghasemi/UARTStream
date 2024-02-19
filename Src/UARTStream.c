@@ -44,6 +44,63 @@ void UARTStream_txHandle(UARTStream* stream) {
     OStream_handle(&stream->Output, OStream_outgoingBytes(&stream->Output));
 }
 /**
+ * @brief Handle Error for Stream, user must put it in HAL_UART_ErrorCallback
+ * 
+ * @param stream 
+ */
+void UARTStream_errorHandle(UARTStream* stream) {
+    IStream_resetIO(&stream->Input);
+    OStream_resetIO(&stream->Output);
+    IStream_receive(&stream->Input);
+}
+#if UARTSTREAM_SUPPORT_IDLE
+/**
+ * @brief Initialize UARTStream object for Idle
+ * 
+ * @param stream 
+ * @param huart 
+ * @param rxBuff 
+ * @param rxBuffSize 
+ * @param txBuff 
+ * @param txBuffSize 
+ */
+void UARTStream_initIdle(
+    UARTStream* stream, UART_HandleTypeDef* huart, 
+    uint8_t* rxBuff, Stream_LenType rxBuffSize, 
+    uint8_t* txBuff, Stream_LenType txBuffSize
+) {
+    UARTStream_init(stream, huart, rxBuff, rxBuffSize, txBuff, txBuffSize);
+    stream->Input.receive = UARTStream_receiveIdle;
+}
+/**
+ * @brief Handle Idle for Stream, user must put it in HAL_UART_RxIdleCallback
+ * 
+ * @param stream 
+ * @param len 
+ */
+void UARTStream_rxHandleIdle(UARTStream* stream, Stream_LenType len) {
+    IStream_handle(&stream->Input, len);
+}
+/**
+ * @brief Stream receive function for Idle
+ * 
+ * @param stream 
+ * @param buff 
+ * @param len 
+ */
+Stream_Result UARTStream_receiveIdle(IStream* stream, uint8_t* buff, Stream_LenType len) {
+    HAL_StatusTypeDef status;
+    UARTStream* uartStream = (UARTStream*) IStream_getArgs(stream);
+    if (uartStream->HUART->hdmarx) {
+        status = HAL_UARTEx_ReceiveToIdle_DMA(uartStream->HUART, buff, len);
+    }
+    else {
+        status = HAL_UARTEx_ReceiveToIdle_IT(uartStream->HUART, buff, len);
+    }
+    return status == HAL_OK ? Stream_Ok : (Stream_Result) (Stream_CustomError | status);
+}
+#endif
+/**
  * @brief Check Received bytes in DMA or IT and add to stream
  * 
  * @param stream 
@@ -89,7 +146,7 @@ Stream_Result UARTStream_receive(IStream* stream, uint8_t* buff, Stream_LenType 
     else {
         status = HAL_UART_Receive_IT(uartStream->HUART, buff, len);
     }
-    return status == HAL_OK ? Stream_Ok : Stream_CustomError | status;
+    return status == HAL_OK ? Stream_Ok : (Stream_Result) (Stream_CustomError | status);
 }
 /**
  * @brief Stream transmit function
@@ -107,5 +164,5 @@ Stream_Result UARTStream_transmit(OStream* stream, uint8_t* buff, Stream_LenType
     else {
         status = HAL_UART_Transmit_IT(uartStream->HUART, buff, len);
     }
-    return status == HAL_OK ? Stream_Ok : Stream_CustomError | status;
+    return status == HAL_OK ? Stream_Ok : (Stream_Result) (Stream_CustomError | status);
 }
