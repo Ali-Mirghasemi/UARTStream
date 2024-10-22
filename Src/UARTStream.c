@@ -123,7 +123,7 @@ Stream_LenType UARTStream_checkReceive(IStream* stream) {
  */
 Stream_LenType UARTStream_checkTransmit(OStream* stream) {
     UARTStream* uartStream = (UARTStream*) OStream_getArgs(stream);
-    if (uartStream->HUART->hdmarx) {
+    if (uartStream->HUART->hdmatx) {
         return OStream_outgoingBytes(stream) - __HAL_DMA_GET_COUNTER(uartStream->HUART->hdmatx);
     }
     else {
