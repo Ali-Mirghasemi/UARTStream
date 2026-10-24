@@ -1,5 +1,108 @@
 #include "UARTStream.h"
 
+/** @brief Keep only a small fixed registry, with no heap allocation. */
+#if (USE_HAL_UART_REGISTER_CALLBACKS == 1U)
+static UARTStream* UARTStream_Registry[UARTSTREAM_MAX_INSTANCES];
+
+/**
+ * @brief Find the stream belonging to an STM32 HAL UART callback.
+ * @param huart HAL UART handle passed by the IRQ service.
+ * @return Registered stream, or NULL when the peripheral is not managed.
+ */
+static UARTStream* UARTStream_find(UART_HandleTypeDef* huart) {
+    uint8_t i;
+    if (huart == NULL) { return NULL; }
+    switch ((uint32_t)(uintptr_t)huart->Instance) {
+#if defined(USART1_BASE)
+        case USART1_BASE:
+#endif
+#if defined(USART2_BASE)
+        case USART2_BASE:
+#endif
+#if defined(USART3_BASE)
+        case USART3_BASE:
+#endif
+#if defined(UART4_BASE)
+        case UART4_BASE:
+#endif
+#if defined(UART5_BASE)
+        case UART5_BASE:
+#endif
+#if defined(USART6_BASE)
+        case USART6_BASE:
+#endif
+            for (i = 0U; i < UARTSTREAM_MAX_INSTANCES; i++) {
+                UARTStream* stream = UARTStream_Registry[i];
+                if (stream != NULL && stream->HUART == huart) { return stream; }
+            }
+            break;
+        default:
+            break;
+    }
+    return NULL;
+}
+
+/** @brief Process an asynchronous transmission completion. */
+static void UARTStream_onTx(UART_HandleTypeDef* huart) {
+    UARTStream* stream = UARTStream_find(huart);
+    if (stream != NULL) { UARTStream_txHandle(stream); }
+}
+
+/** @brief Process a received stream frame. */
+static void UARTStream_onRx(UART_HandleTypeDef* huart) {
+    UARTStream* stream = UARTStream_find(huart);
+    if (stream != NULL) { UARTStream_rxHandle(stream); }
+}
+
+/** @brief Defer recovery from a UART error to the foreground. */
+static void UARTStream_onError(UART_HandleTypeDef* huart) {
+    UARTStream* stream = UARTStream_find(huart);
+    if (stream != NULL) { stream->ErrorPending = 1U; }
+}
+
+#if UARTSTREAM_SUPPORT_IDLE
+/** @brief Pass idle receive events to the configured stream. */
+static void UARTStream_onRxEvent(UART_HandleTypeDef* huart, uint16_t length) {
+    UARTStream* stream = UARTStream_find(huart);
+    if (stream != NULL) { UARTStream_rxHandleIdle(stream, (Stream_LenType)length); }
+}
+#endif
+
+/**
+ * @brief Install the three UART callbacks after HAL_UART_Init has completed.
+ * @return One for a complete registration; zero for an unavailable slot or HAL error.
+ */
+static uint8_t UARTStream_autoRegister(UARTStream* stream) {
+    uint8_t i;
+    uint8_t freeSlot = UARTSTREAM_MAX_INSTANCES;
+    if (stream == NULL || stream->HUART == NULL) { return 0U; }
+    for (i = 0U; i < UARTSTREAM_MAX_INSTANCES; i++) {
+        if (UARTStream_Registry[i] != NULL &&
+            UARTStream_Registry[i]->HUART == stream->HUART &&
+            UARTStream_Registry[i] != stream) { return 0U; }
+        if (UARTStream_Registry[i] == stream) { freeSlot = i; break; }
+        if (UARTStream_Registry[i] == NULL && freeSlot == UARTSTREAM_MAX_INSTANCES) {
+            freeSlot = i;
+        }
+    }
+    if (freeSlot == UARTSTREAM_MAX_INSTANCES) { return 0U; }
+    UARTStream_Registry[freeSlot] = stream;
+    if (HAL_UART_RegisterCallback(stream->HUART, HAL_UART_TX_COMPLETE_CB_ID,
+                                  UARTStream_onTx) != HAL_OK ||
+        HAL_UART_RegisterCallback(stream->HUART, HAL_UART_RX_COMPLETE_CB_ID,
+                                  UARTStream_onRx) != HAL_OK ||
+        HAL_UART_RegisterCallback(stream->HUART, HAL_UART_ERROR_CB_ID,
+                                  UARTStream_onError) != HAL_OK) {
+        (void)HAL_UART_UnRegisterCallback(stream->HUART, HAL_UART_TX_COMPLETE_CB_ID);
+        (void)HAL_UART_UnRegisterCallback(stream->HUART, HAL_UART_RX_COMPLETE_CB_ID);
+        (void)HAL_UART_UnRegisterCallback(stream->HUART, HAL_UART_ERROR_CB_ID);
+        UARTStream_Registry[freeSlot] = NULL;
+        return 0U;
+    }
+    return 1U;
+}
+#endif
+
 /**
  * @brief Initialize UARTStream object
  * 
@@ -10,13 +113,14 @@
  * @param txBuff 
  * @param txBuffSize 
  */
-void UARTStream_init(
+uint8_t UARTStream_init(
 	UARTStream* stream, UART_HandleTypeDef* huart, 
 	uint8_t* rxBuff, Stream_LenType rxBuffSize, 
 	uint8_t* txBuff, Stream_LenType txBuffSize
 ) {
     stream->Args = NULL;
     stream->HUART = huart;
+    stream->ErrorPending = 0U;
 
     IStream_init(&stream->Input, UARTStream_receive, rxBuff, rxBuffSize);
     IStream_setCheckReceive(&stream->Input, UARTStream_checkReceive);
@@ -25,6 +129,11 @@ void UARTStream_init(
     OStream_init(&stream->Output, UARTStream_transmit, txBuff, txBuffSize);
     OStream_setCheckTransmit(&stream->Output, UARTStream_checkTransmit);
     OStream_setArgs(&stream->Output, stream);
+#if (USE_HAL_UART_REGISTER_CALLBACKS == 1U)
+    return UARTStream_autoRegister(stream);
+#else
+    return 1U;
+#endif
 }
 /**
  * @brief Use HAL per-instance callback pointers instead of overriding weak symbols.
@@ -53,6 +162,17 @@ uint8_t UARTStream_registerCallbacks(UARTStream* stream,
     (void)onError;
     return 0U;
 #endif
+}
+
+/**
+ * @brief Handle pending UART error recovery outside the interrupt context.
+ * @param stream Initialized UARTStream instance.
+ */
+void UARTStream_handle(UARTStream* stream) {
+    if (stream != NULL && stream->ErrorPending != 0U) {
+        stream->ErrorPending = 0U;
+        UARTStream_errorHandle(stream);
+    }
 }
 
 /**
@@ -94,13 +214,21 @@ void UARTStream_errorHandle(UARTStream* stream) {
  * @param txBuff 
  * @param txBuffSize 
  */
-void UARTStream_initIdle(
+uint8_t UARTStream_initIdle(
     UARTStream* stream, UART_HandleTypeDef* huart, 
     uint8_t* rxBuff, Stream_LenType rxBuffSize, 
     uint8_t* txBuff, Stream_LenType txBuffSize
 ) {
-    UARTStream_init(stream, huart, rxBuff, rxBuffSize, txBuff, txBuffSize);
+    if (!UARTStream_init(stream, huart, rxBuff, rxBuffSize, txBuff, txBuffSize)) {
+        return 0U;
+    }
     stream->Input.receive = UARTStream_receiveIdle;
+#if (USE_HAL_UART_REGISTER_CALLBACKS == 1U)
+    if (HAL_UART_RegisterRxEventCallback(huart, UARTStream_onRxEvent) != HAL_OK) {
+        return 0U;
+    }
+#endif
+    return 1U;
 }
 /**
  * @brief Handle Idle for Stream, user must put it in HAL_UART_RxIdleCallback

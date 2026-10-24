@@ -8,47 +8,37 @@ Following instructions shows how to use it for `USART1`
 1. Configure UART in CubeMX and generate the code
     > UART Must be in IT or DMA mode
 
-2. Define your `UARTStream` variable and initialize in main after UART init
+2. With CubeMX `USE_HAL_UART_REGISTER_CALLBACKS=1`, create an object and
+   initialize it **after** `MX_USARTx_UART_Init()`:
 
-    **Global Area**
-    ```C
-    uint8_t rxBuf1[128];
-    uint8_t txBuf1[128];
-    UARTStream uart1;
-    ```
+    ```c
+    static uint8_t    RxBuffer[128];
+    static uint8_t    TxBuffer[128];
+    static UARTStream Uart;
 
-    **Main Function**
-    ```C
-    UARTStream_init(
-        &uart1, &huart1,
-        rxBuf1, sizeof(rxBuf1),
-        txBuf1, sizeof(txBuf1)
-    );
-    ```
-3. Add `UARTStream` handle into callbacks
-    ```C
-    void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart) {
-        switch ((uint32_t) huart->Instance) {
-            case USART1_BASE:
-                UARTStream_rxHandle(&uart1);
-                break;
-            // you can add more UART here
-        }
-    }
-
-    void HAL_UART_TxCpltCallback(UART_HandleTypeDef* huart) {
-        switch ((uint32_t) huart->Instance) {
-            case USART1_BASE:
-                UARTStream_txHandle(&uart1);
-                break;
-            // you can add more UART here
-        }
+    if (!UARTStream_init(&Uart, &huart1,
+                         RxBuffer, sizeof(RxBuffer),
+                         TxBuffer, sizeof(TxBuffer))) {
+        /* UART callback registration failed; do not start communication. */
     }
     ```
-4. Start receive stream 
-    ```C
-    IStream_receive(&uart1.In);
-    ```
+
+   `UARTStream_init()` automatically registers `TX_COMPLETE`, `RX_COMPLETE`
+   and `ERROR` handlers. No user weak callback or manual registration is needed.
+   `UARTStream_initIdle()` also registers the receive-to-idle event callback.
+   One stream is supported by default; set `UARTSTREAM_MAX_INSTANCES` before
+   including the header to reserve more static slots for other UARTs.
+
+3. Call `UARTStream_handle(&Uart)` in the foreground loop. The library reports
+   UART errors from interrupts using a one-byte flag, and recovers outside
+   interrupt context. TX/RX completion uses the existing Stream handlers.
+
+4. If CubeMX callback registration is disabled, implement the HAL weak callbacks
+   yourself and forward events to `UARTStream_txHandle()`,
+   `UARTStream_rxHandle()`, and `UARTStream_errorHandle()` as before.
+
+**Runtime:** no heap, no polling waits, no extra UART adapter, and no new IRQ
+handlers. HAL must have initialized the UART before `UARTStream_init()`.
 
 # References
 [Stream Library](https://github.com/Ali-Mirghasemi/Stream)
