@@ -26,10 +26,12 @@
 /******************************************************************************/
 #include "main.h"
 
+/** @brief UART transport adapter without an additional stream allocation. */
 typedef struct {
-	UART_HandleTypeDef* 		HUART;
-	IStream						Input;
-	OStream						Output;
+    void*               Args;    /**< Optional application context; initialized to NULL. */
+    UART_HandleTypeDef* HUART;   /**< CubeMX-generated peripheral handle. */
+    IStream             Input;   /**< Existing Stream input state. */
+    OStream             Output;  /**< Existing Stream output state. */
 } UARTStream;
 
 void UARTStream_init(
@@ -37,6 +39,23 @@ void UARTStream_init(
 	uint8_t* rxBuff, Stream_LenType rxBuffSize, 
 	uint8_t* txBuff, Stream_LenType txBuffSize
 );
+
+/**
+ * @brief Register application-owned HAL callbacks for an existing UARTStream.
+ * @param stream Initialized UARTStream instance.
+ * @param onTx Transmit-complete callback, or NULL to retain the HAL default.
+ * @param onRx Receive-complete callback, or NULL to retain the HAL default.
+ * @param onError UART error callback, or NULL to retain the HAL default.
+ * @return One when all requested callbacks are registered, zero on failure.
+ * @note Requires USE_HAL_UART_REGISTER_CALLBACKS=1 from STM32CubeMX.
+ */
+/** @brief Application-provided HAL-compatible UART event callback pointer. */
+typedef void (*UARTStream_CallbackFn)(UART_HandleTypeDef* huart);
+
+uint8_t UARTStream_registerCallbacks(UARTStream* stream,
+                                     UARTStream_CallbackFn onTx,
+                                     UARTStream_CallbackFn onRx,
+                                     UARTStream_CallbackFn onError);
 
 void UARTStream_rxHandle(UARTStream* stream);
 void UARTStream_txHandle(UARTStream* stream);

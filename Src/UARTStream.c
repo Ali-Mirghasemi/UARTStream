@@ -15,6 +15,7 @@ void UARTStream_init(
 	uint8_t* rxBuff, Stream_LenType rxBuffSize, 
 	uint8_t* txBuff, Stream_LenType txBuffSize
 ) {
+    stream->Args = NULL;
     stream->HUART = huart;
 
     IStream_init(&stream->Input, UARTStream_receive, rxBuff, rxBuffSize);
@@ -25,6 +26,35 @@ void UARTStream_init(
     OStream_setCheckTransmit(&stream->Output, UARTStream_checkTransmit);
     OStream_setArgs(&stream->Output, stream);
 }
+/**
+ * @brief Use HAL per-instance callback pointers instead of overriding weak symbols.
+ * @return One when all selected callbacks have been installed.
+ */
+uint8_t UARTStream_registerCallbacks(UARTStream* stream,
+                                     UARTStream_CallbackFn onTx,
+                                     UARTStream_CallbackFn onRx,
+                                     UARTStream_CallbackFn onError) {
+#if USE_HAL_UART_REGISTER_CALLBACKS
+    if (stream == NULL || stream->HUART == NULL) { return 0U; }
+    if (onTx != NULL &&
+        HAL_UART_RegisterCallback(stream->HUART, HAL_UART_TX_COMPLETE_CB_ID,
+                                  onTx) != HAL_OK) { return 0U; }
+    if (onRx != NULL &&
+        HAL_UART_RegisterCallback(stream->HUART, HAL_UART_RX_COMPLETE_CB_ID,
+                                  onRx) != HAL_OK) { return 0U; }
+    if (onError != NULL &&
+        HAL_UART_RegisterCallback(stream->HUART, HAL_UART_ERROR_CB_ID,
+                                  onError) != HAL_OK) { return 0U; }
+    return 1U;
+#else
+    (void)stream;
+    (void)onTx;
+    (void)onRx;
+    (void)onError;
+    return 0U;
+#endif
+}
+
 /**
  * @brief Handle Receive Data for Input Stream, user must put it in 
  * HAL_UART_RxCpltCallback or other callbacks
